@@ -570,7 +570,6 @@ class GeminiAgent implements Agent {
             processedQueryParts.push(part);
           }
         }
-        processedQueryParts.push({ text: '\n--- End of content ---' });
       } else {
         console.warn(
           'read_many_files tool returned no content or empty content.',

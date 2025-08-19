@@ -552,6 +552,7 @@ describe('ReadManyFilesTool', () => {
 Content of receive-detail
 
 `,
+        `\n--- End of content ---`,
       ]);
       expect(result.returnDisplay).toContain(
         'Successfully read and concatenated content from **1 file(s)**',
@@ -570,6 +571,7 @@ Content of receive-detail
 Content of file[1]
 
 `,
+        `\n--- End of content ---`,
       ]);
       expect(result.returnDisplay).toContain(
         'Successfully read and concatenated content from **1 file(s)**',

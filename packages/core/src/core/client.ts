@@ -765,6 +765,7 @@ export class GeminiClient {
     prompt_id: string,
     force: boolean = false,
   ): Promise<ChatCompressionInfo | null> {
+    this._pruneRedundantFileOperations();
     const curatedHistory = this.getChat().getHistory(true);
 
     // Regardless of `force`, don't do anything if the history is empty.
@@ -861,6 +862,167 @@ export class GeminiClient {
       originalTokenCount,
       newTokenCount,
     };
+  }
+
+  private _pruneRedundantFileOperations() {
+    const history = this.getChat().getHistory();
+
+    // Step 1: Collect all file operation calls and responses with their full indices
+    type OperationLocation = { contentIndex: number; partIndex: number };
+    const writes: Array<{ call: OperationLocation; filePath: string }> = [];
+    const writeResponses: OperationLocation[] = [];
+    const reads: Array<{ call: OperationLocation; filePath: string }> = [];
+    const readResponses: OperationLocation[] = [];
+
+    history.forEach((content, contentIndex) => {
+      if (!content.parts) return;
+      content.parts.forEach((part, partIndex) => {
+        if (part.functionCall) {
+          const { name, args } = part.functionCall;
+          if (name === 'write_file' && args) {
+            const filePath = args['file_path'] as string;
+            if (filePath)
+              writes.push({ call: { contentIndex, partIndex }, filePath });
+          } else if (name === 'read_file' && args) {
+            const filePath = args['absolute_path'] as string;
+            if (filePath)
+              reads.push({ call: { contentIndex, partIndex }, filePath });
+          }
+        } else if (part.functionResponse) {
+          if (part.functionResponse.name === 'write_file') {
+            writeResponses.push({ contentIndex, partIndex });
+          } else if (part.functionResponse.name === 'read_file') {
+            readResponses.push({ contentIndex, partIndex });
+          }
+        }
+      });
+    });
+
+    // Step 2: Pair calls with responses
+    const pairOperations = (
+      calls: Array<{ call: OperationLocation; filePath: string }>,
+      responses: OperationLocation[],
+    ) => {
+      const pairs: Array<{
+        call: OperationLocation;
+        response: OperationLocation;
+        filePath: string;
+      }> = [];
+      const availableResponses = [...responses];
+      for (const call of calls) {
+        let responseIdx = -1;
+        for (let i = 0; i < availableResponses.length; i++) {
+          if (
+            availableResponses[i].contentIndex > call.call.contentIndex ||
+            (availableResponses[i].contentIndex === call.call.contentIndex &&
+              availableResponses[i].partIndex > call.call.partIndex)
+          ) {
+            responseIdx = i;
+            break;
+          }
+        }
+        if (responseIdx !== -1) {
+          const response = availableResponses.splice(responseIdx, 1)[0];
+          pairs.push({ ...call, response });
+        }
+      }
+      return pairs;
+    };
+
+    const writePairs = pairOperations(writes, writeResponses);
+    const readPairs = pairOperations(reads, readResponses);
+
+    // Step 3: Group by file and determine what to prune
+    const opsByFile = new Map<
+      string,
+      {
+        writes: typeof writePairs;
+        reads: typeof readPairs;
+      }
+    >();
+
+    [...writePairs, ...readPairs].forEach((op) => {
+      if (!opsByFile.has(op.filePath)) {
+        opsByFile.set(op.filePath, { writes: [], reads: [] });
+      }
+      const fileOps = opsByFile.get(op.filePath)!;
+      const part = history[op.call.contentIndex].parts?.[op.call.partIndex];
+      if (part?.functionCall?.name === 'write_file') {
+        fileOps.writes.push(op);
+      } else {
+        fileOps.reads.push(op);
+      }
+    });
+
+    const partsToPrune = new Set<string>(); // "contentIndex:partIndex"
+    const partsToReplace = new Map<string, Part>();
+
+    for (const [filePath, ops] of opsByFile.entries()) {
+      const lastWrite =
+        ops.writes.length > 0 ? ops.writes[ops.writes.length - 1] : null;
+      const lastRead =
+        ops.reads.length > 0 ? ops.reads[ops.reads.length - 1] : null;
+
+      // Prune all but the last write
+      ops.writes.slice(0, -1).forEach((write) => {
+        partsToReplace.set(
+          `${write.call.contentIndex}:${write.call.partIndex}`,
+          {
+            text: `I wrote updated content to ${filePath}. That content has been removed from history because I wrote to the same file again later.`,
+          },
+        );
+        partsToPrune.add(
+          `${write.response.contentIndex}:${write.response.partIndex}`,
+        );
+      });
+
+      // Prune reads that happened before the last write or last read
+      ops.reads.forEach((read) => {
+        const isPrunable =
+          (lastWrite && read.call.contentIndex < lastWrite.call.contentIndex) ||
+          (lastRead && read.call.contentIndex < lastRead.call.contentIndex);
+        if (isPrunable) {
+          partsToReplace.set(
+            `${read.call.contentIndex}:${read.call.partIndex}`,
+            {
+              text: `I requested and read the content of ${filePath}. That content has been removed from history because I read or wrote to the same file again later.`,
+            },
+          );
+          partsToPrune.add(
+            `${read.response.contentIndex}:${read.response.partIndex}`,
+          );
+        }
+      });
+    }
+
+    if (partsToPrune.size === 0 && partsToReplace.size === 0) {
+      return;
+    }
+
+    const newHistory: Content[] = [];
+    for (let i = 0; i < history.length; i++) {
+      const content = history[i];
+      if (!content.parts) {
+        newHistory.push(content);
+        continue;
+      }
+      const newParts: Content['parts'] = [];
+      for (let j = 0; j < content.parts.length; j++) {
+        const partKey = `${i}:${j}`;
+        if (partsToPrune.has(partKey)) {
+          continue;
+        }
+        if (partsToReplace.has(partKey)) {
+          newParts.push(partsToReplace.get(partKey)!);
+        } else {
+          newParts.push(content.parts[j]);
+        }
+      }
+      if (newParts.length > 0) {
+        newHistory.push({ ...content, parts: newParts });
+      }
+    }
+    this.getChat().setHistory(newHistory);
   }
 
   /**

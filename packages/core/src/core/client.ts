@@ -7,6 +7,7 @@
 import {
   EmbedContentParameters,
   GenerateContentConfig,
+  Part,
   PartListUnion,
   Content,
   Tool,

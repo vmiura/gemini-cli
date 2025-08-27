@@ -6,6 +6,8 @@
 
 // Export config
 export * from './config/config.js';
+export * from './config/role-modes.js';
+export * from './config/role-modes-defaults.js';
 
 // Export Core Logic
 export * from './core/client.js';

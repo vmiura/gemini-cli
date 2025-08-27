@@ -48,6 +48,7 @@ import {
 } from '../services/fileSystemService.js';
 import { logCliConfiguration, logIdeConnection } from '../telemetry/loggers.js';
 import { IdeConnectionEvent, IdeConnectionType } from '../telemetry/types.js';
+import { RoleMode } from './role-modes.js';
 
 // Re-export OAuth config type
 export type { MCPOAuthConfig };
@@ -201,6 +202,7 @@ export interface ConfigParameters {
   shouldUseNodePtyShell?: boolean;
   skipNextSpeakerCheck?: boolean;
   enablePromptCompletion?: boolean;
+  roleMode?: RoleMode;
 }
 
 export class Config {
@@ -225,6 +227,7 @@ export class Config {
   private userMemory: string;
   private geminiMdFileCount: number;
   private approvalMode: ApprovalMode;
+  private roleMode: RoleMode | undefined;
   private readonly showMemoryUsage: boolean;
   private readonly accessibility: AccessibilitySettings;
   private readonly telemetrySettings: TelemetrySettings;
@@ -341,6 +344,7 @@ export class Config {
     this.skipNextSpeakerCheck = params.skipNextSpeakerCheck ?? false;
     this.storage = new Storage(this.targetDir);
     this.enablePromptCompletion = params.enablePromptCompletion ?? false;
+    this.roleMode = params.roleMode;
 
     if (params.contextFileName) {
       setGeminiMdFilename(params.contextFileName);
@@ -512,7 +516,11 @@ export class Config {
   }
 
   getExcludeTools(): string[] | undefined {
-    return this.excludeTools;
+    const allExcludeTools = new Set([
+      ...(this.excludeTools || []),
+      ...(this.roleMode?.excludeTools || []),
+    ]);
+    return [...allExcludeTools];
   }
 
   getToolDiscoveryCommand(): string | undefined {
@@ -553,6 +561,15 @@ export class Config {
 
   setApprovalMode(mode: ApprovalMode): void {
     this.approvalMode = mode;
+  }
+
+  setRoleMode(roleMode: RoleMode): void {
+    this.roleMode = roleMode;
+    this.toolRegistry.updateExcludeTools(this.getExcludeTools() || []);
+  }
+
+  getRoleMode(): RoleMode | undefined {
+    return this.roleMode;
   }
 
   getShowMemoryUsage(): boolean {
@@ -748,6 +765,7 @@ export class Config {
 
   async createToolRegistry(): Promise<ToolRegistry> {
     const registry = new ToolRegistry(this);
+    registry.updateExcludeTools(this.getExcludeTools() || []);
 
     // helper to create & register core tools that are enabled
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -755,7 +773,6 @@ export class Config {
       const className = ToolClass.name;
       const toolName = ToolClass.Name || className;
       const coreTools = this.getCoreTools();
-      const excludeTools = this.getExcludeTools();
 
       let isEnabled = false;
       if (coreTools === undefined) {
@@ -771,8 +788,8 @@ export class Config {
       }
 
       if (
-        excludeTools?.includes(className) ||
-        excludeTools?.includes(toolName)
+        this.excludeTools?.includes(className) ||
+        this.excludeTools?.includes(toolName)
       ) {
         isEnabled = false;
       }

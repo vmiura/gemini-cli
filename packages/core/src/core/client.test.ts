@@ -180,6 +180,7 @@ describe('Gemini Client (client.ts)', () => {
       authType: AuthType.USE_GEMINI,
     };
     const mockConfigObject = {
+      getIsPlanMode: vi.fn().mockReturnValue(false),
       getContentGeneratorConfig: vi
         .fn()
         .mockReturnValue(contentGeneratorConfig),
@@ -210,6 +211,7 @@ describe('Gemini Client (client.ts)', () => {
       setFallbackMode: vi.fn(),
       getChatCompression: vi.fn().mockReturnValue(undefined),
       getSkipNextSpeakerCheck: vi.fn().mockReturnValue(false),
+      getRoleMode: vi.fn().mockReturnValue(undefined),
     };
     const MockedConfig = vi.mocked(Config, true);
     MockedConfig.mockImplementation(

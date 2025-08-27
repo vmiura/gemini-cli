@@ -27,6 +27,8 @@ import {
   EditTool,
   WriteFileTool,
   MCPServerConfig,
+  BuiltInRole,
+  BUILT_IN_ROLE_MODES,
 } from '@google/gemini-cli-core';
 import { Settings } from './settings.js';
 
@@ -73,6 +75,7 @@ export interface CliArgs {
   listExtensions: boolean | undefined;
   proxy: string | undefined;
   includeDirectories: string[] | undefined;
+  mode: string | undefined;
 }
 
 export async function parseArguments(): Promise<CliArgs> {
@@ -88,6 +91,12 @@ export async function parseArguments(): Promise<CliArgs> {
           type: 'string',
           description: `Model`,
           default: process.env['GEMINI_MODEL'],
+        })
+        .option('mode', {
+          type: 'string',
+          choices: Object.values(BuiltInRole),
+          description: 'Select a Role Mode',
+          default: BuiltInRole.AGENT,
         })
         .option('prompt', {
           alias: 'p',
@@ -429,10 +438,13 @@ export async function loadCliConfig(
     }
   }
 
+  const roleMode = BUILT_IN_ROLE_MODES[argv.mode as BuiltInRole];
+
   const excludeTools = mergeExcludeTools(
     settings,
     activeExtensions,
     extraExcludes.length > 0 ? extraExcludes : undefined,
+    roleMode.excludeTools,
   );
   const blockedMcpServers: Array<{ name: string; extensionName: string }> = [];
 
@@ -543,6 +555,7 @@ export async function loadCliConfig(
     shouldUseNodePtyShell: settings.shouldUseNodePtyShell,
     skipNextSpeakerCheck: settings.skipNextSpeakerCheck,
     enablePromptCompletion: settings.enablePromptCompletion ?? false,
+    roleMode,
   });
 }
 
@@ -602,10 +615,12 @@ function mergeExcludeTools(
   settings: Settings,
   extensions: Extension[],
   extraExcludes?: string[] | undefined,
+  roleModeExcludes?: string[] | undefined,
 ): string[] {
   const allExcludeTools = new Set([
     ...(settings.excludeTools || []),
     ...(extraExcludes || []),
+    ...(roleModeExcludes || []),
   ]);
   for (const extension of extensions) {
     for (const tool of extension.config.excludeTools || []) {

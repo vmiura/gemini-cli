@@ -325,6 +325,7 @@ describe('useGeminiStream', () => {
       getContentGeneratorConfig: vi
         .fn()
         .mockReturnValue(contentGeneratorConfig),
+      getRoleMode: vi.fn().mockReturnValue(undefined),
     } as unknown as Config;
     mockOnDebugMessage = vi.fn();
     mockHandleSlashCommand = vi.fn().mockResolvedValue(false);

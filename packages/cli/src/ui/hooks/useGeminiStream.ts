@@ -55,6 +55,7 @@ import {
 } from './useReactToolScheduler.js';
 import { useSessionStats } from '../contexts/SessionContext.js';
 import { useKeypress } from './useKeypress.js';
+import { getSystemReminder } from '../utils/reminders.js';
 
 export function mergePartListUnions(list: PartListUnion[]): PartListUnion {
   const resultParts: PartListUnion = [];
@@ -107,6 +108,7 @@ export const useGeminiStream = (
   const { startNewPrompt, getPromptCount } = useSessionStats();
   const storage = config.storage;
   const logger = useLogger(storage);
+
   const gitService = useMemo(() => {
     if (!config.getProjectRoot()) {
       return;
@@ -337,6 +339,24 @@ export const useGeminiStream = (
         );
         return { queryToSend: null, shouldProceed: false };
       }
+
+      // Send a mode reminder when in planning mode, or when switching out
+      // of planning mode.
+      const roleMode = config.getRoleMode();
+      if (roleMode) {
+        const reminder = getSystemReminder(roleMode);
+        if (Array.isArray(localQueryToSendToGemini)) {
+          localQueryToSendToGemini.push({
+            text: reminder,
+          });
+        } else if (typeof localQueryToSendToGemini === 'string') {
+          localQueryToSendToGemini = [
+            { text: localQueryToSendToGemini },
+            { text: reminder },
+          ];
+        }
+      }
+
       return { queryToSend: localQueryToSendToGemini, shouldProceed: true };
     },
     [
@@ -737,10 +757,6 @@ export const useGeminiStream = (
 
   const handleCompletedTools = useCallback(
     async (completedToolCallsFromScheduler: TrackedToolCall[]) => {
-      if (isResponding) {
-        return;
-      }
-
       const completedAndReadyToSubmitTools =
         completedToolCallsFromScheduler.filter(
           (
@@ -834,6 +850,13 @@ export const useGeminiStream = (
       const responsesToSend: PartListUnion[] = geminiTools.map(
         (toolCall) => toolCall.response.responseParts,
       );
+
+      const roleMode = config.getRoleMode();
+      if (roleMode) {
+        const reminder = getSystemReminder(roleMode);
+        responsesToSend.push({ text: reminder });
+      }
+
       const callIdsToMarkAsSubmitted = geminiTools.map(
         (toolCall) => toolCall.request.callId,
       );
@@ -858,12 +881,12 @@ export const useGeminiStream = (
       );
     },
     [
-      isResponding,
       submitQuery,
       markToolsAsSubmitted,
       geminiClient,
       performMemoryRefresh,
       modelSwitchedFromQuotaError,
+      config,
     ],
   );
 

@@ -166,6 +166,7 @@ export class ToolRegistry {
   private tools: Map<string, AnyDeclarativeTool> = new Map();
   private config: Config;
   private mcpClientManager: McpClientManager;
+  private excludeTools: Set<string> = new Set();
 
   constructor(config: Config) {
     this.config = config;
@@ -404,6 +405,16 @@ export class ToolRegistry {
     }
   }
 
+  private getEnabledTools(): AnyDeclarativeTool[] {
+    return Array.from(this.tools.values()).filter((tool) => {
+      const toolName = tool.name;
+      const className = tool.constructor.name;
+      return (
+        !this.excludeTools.has(toolName) && !this.excludeTools.has(className)
+      );
+    });
+  }
+
   /**
    * Retrieves the list of tool schemas (FunctionDeclaration array).
    * Extracts the declarations from the ToolListUnion structure.
@@ -411,11 +422,11 @@ export class ToolRegistry {
    * @returns An array of FunctionDeclarations.
    */
   getFunctionDeclarations(): FunctionDeclaration[] {
-    const declarations: FunctionDeclaration[] = [];
-    this.tools.forEach((tool) => {
-      declarations.push(tool.schema);
-    });
-    return declarations;
+    return this.getEnabledTools().map((tool) => tool.schema);
+  }
+
+  updateExcludeTools(excludeTools: string[]): void {
+    this.excludeTools = new Set(excludeTools);
   }
 
   /**
@@ -424,21 +435,17 @@ export class ToolRegistry {
    * @returns An array of FunctionDeclarations for the specified tools.
    */
   getFunctionDeclarationsFiltered(toolNames: string[]): FunctionDeclaration[] {
-    const declarations: FunctionDeclaration[] = [];
-    for (const name of toolNames) {
-      const tool = this.tools.get(name);
-      if (tool) {
-        declarations.push(tool.schema);
-      }
-    }
-    return declarations;
+    const toolNameSet = new Set(toolNames);
+    return this.getEnabledTools()
+      .filter((tool) => toolNameSet.has(tool.name))
+      .map((tool) => tool.schema);
   }
 
   /**
    * Returns an array of all registered and discovered tool instances.
    */
   getAllTools(): AnyDeclarativeTool[] {
-    return Array.from(this.tools.values()).sort((a, b) =>
+    return this.getEnabledTools().sort((a, b) =>
       a.displayName.localeCompare(b.displayName),
     );
   }
@@ -447,19 +454,22 @@ export class ToolRegistry {
    * Returns an array of tools registered from a specific MCP server.
    */
   getToolsByServer(serverName: string): AnyDeclarativeTool[] {
-    const serverTools: AnyDeclarativeTool[] = [];
-    for (const tool of this.tools.values()) {
-      if ((tool as DiscoveredMCPTool)?.serverName === serverName) {
-        serverTools.push(tool);
-      }
-    }
-    return serverTools.sort((a, b) => a.name.localeCompare(b.name));
+    return this.getEnabledTools()
+      .filter((tool) => (tool as DiscoveredMCPTool)?.serverName === serverName)
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
 
   /**
    * Get the definition of a specific tool.
    */
   getTool(name: string): AnyDeclarativeTool | undefined {
-    return this.tools.get(name);
+    const tool = this.tools.get(name);
+    if (!tool) return undefined;
+    if (
+      this.excludeTools.has(tool.name) ||
+      this.excludeTools.has(tool.constructor.name)
+    )
+      return undefined;
+    return tool;
   }
 }

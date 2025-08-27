@@ -7,7 +7,7 @@
 import React from 'react';
 import { Box, Text } from 'ink';
 import { theme } from '../semantic-colors.js';
-import { shortenPath, tildeifyPath } from '@google/gemini-cli-core';
+import { shortenPath, tildeifyPath, RoleMode } from '@google/gemini-cli-core';
 import { ConsoleSummaryDisplay } from './ConsoleSummaryDisplay.js';
 import process from 'node:process';
 import path from 'node:path';
@@ -30,6 +30,7 @@ interface FooterProps {
   showErrorDetails: boolean;
   showMemoryUsage?: boolean;
   promptTokenCount: number;
+  roleMode?: RoleMode;
   nightly: boolean;
   vimMode?: string;
   isTrustedFolder?: boolean;
@@ -46,6 +47,7 @@ export const Footer: React.FC<FooterProps> = ({
   showErrorDetails,
   showMemoryUsage,
   promptTokenCount,
+  roleMode,
   nightly,
   vimMode,
   isTrustedFolder,
@@ -124,6 +126,9 @@ export const Footer: React.FC<FooterProps> = ({
 
       {/* Right Section: Gemini Label and Console Summary */}
       <Box alignItems="center" paddingTop={isNarrow ? 1 : 0}>
+        {roleMode && (
+          <Text color={theme.text.secondary}>{roleMode.displayName} | </Text>
+        )}
         <Text color={theme.text.accent}>
           {isNarrow ? '' : ' '}
           {model}{' '}

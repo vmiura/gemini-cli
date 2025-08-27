@@ -87,6 +87,7 @@ interface MockServerConfig {
   getGeminiClient: Mock<() => GeminiClient | undefined>;
   getUserTier: Mock<() => Promise<string | undefined>>;
   getIdeClient: Mock<() => { getCurrentIde: Mock<() => string | undefined> }>;
+  getIsPlanMode: Mock<() => boolean>;
 }
 
 // Mock @google/gemini-cli-core and its Config class
@@ -168,6 +169,12 @@ vi.mock('@google/gemini-cli-core', async (importOriginal) => {
           getConnectionStatus: vi.fn(() => 'connected'),
         })),
         isTrustedFolder: vi.fn(() => true),
+        getIsPlanMode: vi.fn(() => false),
+        getRoleMode: vi.fn(() => ({
+          name: 'agent',
+          displayName: 'Agent Mode',
+          prompt: 'You are in AGENT MODE.',
+        })),
       };
     });
 

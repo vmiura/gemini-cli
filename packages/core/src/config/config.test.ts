@@ -42,6 +42,7 @@ vi.mock('../tools/tool-registry', () => {
   ToolRegistryMock.prototype.getAllTools = vi.fn(() => []); // Mock methods if needed
   ToolRegistryMock.prototype.getTool = vi.fn();
   ToolRegistryMock.prototype.getFunctionDeclarations = vi.fn(() => []);
+  ToolRegistryMock.prototype.updateExcludeTools = vi.fn();
   return { ToolRegistry: ToolRegistryMock };
 });
 
